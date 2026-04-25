@@ -31,6 +31,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.material.icons.filled.Home
 import com.example.money_tracker.ui.theme.Money_TrackerTheme
 import java.text.SimpleDateFormat
 import java.util.*
@@ -42,7 +43,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             Money_TrackerTheme {
-                MoneyTrackerScreen()
+                MoneyTrackerApp()
             }
         }
     }
@@ -58,6 +59,15 @@ val expenseCategories = listOf(
     "Kesehatan", "Tagihan", "Rumah", "Lainnya"
 )
 
+// Palet Warna UI
+val BgColor = Color(0xFF0F172A)
+val CardSurface = Color(0xFF1E293B)
+val TextMuted = Color(0xFF94A3B8)
+val IncomeGreen = Color(0xFF10B981)
+val ExpenseRed = Color(0xFFF43F5E)
+
+
+
 // Modifikasi model Transaction dengan menambahkan kategori
 data class Transaction(
     val name: String,
@@ -67,40 +77,52 @@ data class Transaction(
     val category: String // Menambahkan field kategori
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MoneyTrackerScreen() {
-    val transactions = remember { mutableStateListOf<Transaction>() }
-
+fun MoneyTrackerHomeScreen(transactions: MutableList<Transaction>) {
     var showAddDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var selectedTransactionType by remember { mutableStateOf("Pengeluaran") }
     var filterType by remember { mutableStateOf("All") }
+    var filterMonth by remember { mutableStateOf("Semua Bulan") }
 
-    // Untuk proses edit transaksi
+    val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+    val availableMonths = remember(transactions) {
+        listOf("Semua Bulan") + transactions.mapNotNull {
+            val parts = it.date.split(" ")
+            if (parts.size >= 3) "${parts[1]} ${parts[2]}" else null
+        }.distinct()
+    }
+
     var selectedTransactionIndex by remember { mutableStateOf(-1) }
     var editingTransaction by remember { mutableStateOf<Transaction?>(null) }
 
-    val displayedTransactions = remember(transactions, filterType) {
-        when (filterType) {
-            "Pemasukan" -> transactions.filter { it.type == "Pemasukan" }
-            "Pengeluaran" -> transactions.filter { it.type == "Pengeluaran" }
-            else -> transactions
+    val displayedTransactions = remember(transactions, filterType, filterMonth) {
+        transactions.filter { transaction ->
+            val matchType = if (filterType == "All") true else transaction.type == filterType
+            val parts = transaction.date.split(" ")
+            val monthYear = if (parts.size >= 3) "${parts[1]} ${parts[2]}" else ""
+            val matchMonth = if (filterMonth == "Semua Bulan") true else monthYear == filterMonth
+            matchType && matchMonth
+        }.sortedByDescending {
+            try { dateFormat.parse(it.date) } catch (e: Exception) { Date(0) }
         }
     }
 
-    val totalIncome = transactions.filter { it.type == "Pemasukan" }
-        .sumOf { it.amount.replace(".", "").toInt() }
-    val totalExpense = transactions.filter { it.type == "Pengeluaran" }
-        .sumOf { it.amount.replace(".", "").toInt() }
+    val totalIncome = displayedTransactions.filter { it.type == "Pemasukan" }
+        .sumOf { it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
+    val totalExpense = displayedTransactions.filter { it.type == "Pengeluaran" }
+        .sumOf { it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
     val balance = totalIncome - totalExpense
 
-    // Dialog untuk tambah transaksi baru
     if (showAddDialog) {
         AddTransactionDialog(
             transactionType = selectedTransactionType,
             onTypeChange = { selectedTransactionType = it },
-            onAddTransaction = { name, amount, category, date ->
-                val formattedAmount = amount.replace(".", "").toInt().format()
+            onAddTransaction = { name: String, amount: String, category: String, date: String ->
+                val cleanAmount = amount.replace(Regex("[^0-9]"), "")
+                val formattedAmount = cleanAmount.toIntOrNull()?.format() ?: "0"
+
                 transactions.add(
                     Transaction(
                         name = name,
@@ -116,264 +138,140 @@ fun MoneyTrackerScreen() {
         )
     }
 
-    // Dialog untuk edit transaksi
     if (showEditDialog && editingTransaction != null) {
         EditTransactionDialog(
             transaction = editingTransaction!!,
-            onUpdateTransaction = { name, type, amount, category, date ->
-                val updatedTransaction = Transaction(
+            onUpdateTransaction = { name: String, type: String, amount: String, category: String, date: String ->
+                val cleanAmount = amount.replace(Regex("[^0-9]"), "")
+                val formattedAmount = cleanAmount.toIntOrNull()?.format() ?: "0"
+
+                val updated = Transaction(
                     name = name,
                     type = type,
-                    amount = amount.replace(".", "").toInt().format(),
+                    amount = formattedAmount,
                     date = date,
                     category = category
                 )
 
-                if (selectedTransactionIndex >= 0 && selectedTransactionIndex < transactions.size) {
-                    transactions[selectedTransactionIndex] = updatedTransaction
+                if (selectedTransactionIndex in transactions.indices) {
+                    transactions[selectedTransactionIndex] = updated
                 }
-
                 showEditDialog = false
                 editingTransaction = null
-                selectedTransactionIndex = -1
             },
             onDeleteTransaction = {
-                if (selectedTransactionIndex >= 0 && selectedTransactionIndex < transactions.size) {
+                if (selectedTransactionIndex in transactions.indices) {
                     transactions.removeAt(selectedTransactionIndex)
                 }
                 showEditDialog = false
                 editingTransaction = null
-                selectedTransactionIndex = -1
             },
             onDismiss = {
                 showEditDialog = false
                 editingTransaction = null
-                selectedTransactionIndex = -1
             }
         )
     }
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = "Add Transaction")
-            }
-        }
+            ExtendedFloatingActionButton(
+                onClick = { showAddDialog = true },
+                containerColor = Color(0xFF6366F1),
+                contentColor = Color.White,
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text("Transaksi", fontWeight = FontWeight.Bold) }
+            )
+        },
+        containerColor = BgColor
     ) { innerPadding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(Color(0xFF121212)),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 20.dp)
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Money Tracker",
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Rp${balance.format()}",
-                color = Color.White,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Filled.KeyboardArrowDown,
-                        contentDescription = "Pemasukan",
-                        tint = Color.Green,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "Rp${totalIncome.format()}",
-                        color = Color.Green,
-                        fontWeight = FontWeight.Bold
-                    )
+            Spacer(modifier = Modifier.height(24.dp))
+            // Header
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("Halo, Hikmia!", color = TextMuted, fontSize = 14.sp)
+                    Text("Kelola uangmu hari ini", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Filled.KeyboardArrowUp,
-                        contentDescription = "Pengeluaran",
-                        tint = Color.Red,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "Rp${totalExpense.format()}",
-                        color = Color.Red,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            // Filter buttons
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Button(
-                    onClick = { filterType = "All" },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (filterType == "All") MaterialTheme.colorScheme.primary else Color.Gray
-                    )
-                ) {
-                    Text("All")
-                }
-                Button(
-                    onClick = { filterType = "Pemasukan" },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (filterType == "Pemasukan") MaterialTheme.colorScheme.primary else Color.Gray
-                    )
-                ) {
-                    Text("Pemasukan")
-                }
-                Button(
-                    onClick = { filterType = "Pengeluaran" },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (filterType == "Pengeluaran") MaterialTheme.colorScheme.primary else Color.Gray
-                    )
-                ) {
-                    Text("Pengeluaran")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Grafik Transaksi
-            if (transactions.isNotEmpty()) {
-                TransactionBarChart(
-                    incomeAmount = totalIncome,
-                    expenseAmount = totalExpense,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                        .padding(16.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // Daftar Transaksi
-            if (displayedTransactions.isEmpty()) {
-                EmptyStateMessage("Belum ada transaksi")
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                ) {
-                    items(displayedTransactions.size) { index ->
-                        val globalIndex = transactions.indexOf(displayedTransactions[index])
-                        TransactionItem(
-                            transaction = displayedTransactions[index],
-                            onClick = {
-                                selectedTransactionIndex = globalIndex
-                                editingTransaction = transactions[globalIndex]
-                                showEditDialog = true
-                            }
-                        )
+                // Filter Bulan
+                var expandedMonth by remember { mutableStateOf(false) }
+                Box {
+                    Surface(
+                        onClick = { expandedMonth = true },
+                        color = CardSurface,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(filterMonth, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    DropdownMenu(expanded = expandedMonth, onDismissRequest = { expandedMonth = false }) {
+                        availableMonths.forEach { month ->
+                            DropdownMenuItem(text = { Text(month) }, onClick = { filterMonth = month; expandedMonth = false })
+                        }
                     }
                 }
             }
+
+            // Wallet Card
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+                colors = CardDefaults.cardColors(containerColor = CardSurface),
+                shape = RoundedCornerShape(28.dp)
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text("Total Saldo", color = TextMuted, fontSize = 14.sp)
+                    Text("Rp${balance.format()}", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        InfoColumn("Pemasukan", "Rp${totalIncome.format()}", IncomeGreen, Icons.Default.KeyboardArrowDown, Modifier.weight(1f))
+                        InfoColumn("Pengeluaran", "Rp${totalExpense.format()}", ExpenseRed, Icons.Default.KeyboardArrowUp, Modifier.weight(1f), Alignment.End)
+                    }
+                }
+            }
+
+            // Chips
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("All", "Pemasukan", "Pengeluaran").forEach { type ->
+                    FilterChip(
+                        selected = filterType == type,
+                        onClick = { filterType = type },
+                        label = { Text(type, fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.primary.copy(0.2f), selectedLabelColor = MaterialTheme.colorScheme.primary)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Transaction List
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(displayedTransactions.size) { index ->
+                    val globalIndex = transactions.indexOf(displayedTransactions[index])
+                    TransactionItem(displayedTransactions[index]) {
+                        selectedTransactionIndex = globalIndex
+                        editingTransaction = transactions[globalIndex]
+                        showEditDialog = true
+                    }
+                }
+                item { Spacer(modifier = Modifier.height(80.dp)) }
+            }
         }
     }
 }
 
 @Composable
-fun EmptyStateMessage(message: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(32.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = message,
-            color = Color.White.copy(alpha = 0.7f),
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-fun TransactionBarChart(
-    incomeAmount: Int,
-    expenseAmount: Int,
-    modifier: Modifier = Modifier
-) {
-    val maxValue = max(incomeAmount, expenseAmount).toFloat()
-    val incomeRatio = if (maxValue > 0) incomeAmount / maxValue else 0f
-    val expenseRatio = if (maxValue > 0) expenseAmount / maxValue else 0f
-
-    Column(modifier = modifier) {
-        Canvas(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .background(Color(0xFF1E1E1E))
-        ) {
-            val barWidth = size.width * 0.3f
-            val spacing = size.width * 0.4f
-
-            // Draw Income Bar
-            val incomeHeight = size.height * incomeRatio
-            drawRect(
-                color = Color.Green,
-                topLeft = Offset(size.width / 4 - barWidth / 2, size.height - incomeHeight),
-                size = Size(barWidth, incomeHeight)
-            )
-
-            // Draw Expense Bar
-            val expenseHeight = size.height * expenseRatio
-            drawRect(
-                color = Color.Red,
-                topLeft = Offset(3 * size.width / 4 - barWidth / 2, size.height - expenseHeight),
-                size = Size(barWidth, expenseHeight)
-            )
+fun InfoColumn(label: String, amount: String, color: Color, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, align: Alignment.Horizontal = Alignment.Start) {
+    Column(modifier = modifier, horizontalAlignment = align) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (align == Alignment.Start) Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+            Text(label, color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 4.dp))
+            if (align == Alignment.End) Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Chart Labels
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceAround
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "Pemasukan",
-                    color = Color.Green,
-                    fontSize = 12.sp
-                )
-                Text(
-                    text = "Rp${incomeAmount.format()}",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "Pengeluaran",
-                    color = Color.Red,
-                    fontSize = 12.sp
-                )
-                Text(
-                    text = "Rp${expenseAmount.format()}",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
+        Text(amount, color = color, fontSize = 16.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -384,66 +282,60 @@ fun DatePickerDialog(
     onDateSelected: (Date) -> Unit,
     initialDate: Date
 ) {
-    val calendar = Calendar.getInstance().apply {
-        time = initialDate
-    }
+    val calendar = Calendar.getInstance()
+    calendar.time = initialDate
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = calendar.timeInMillis
+    )
 
-    var selectedYear by remember { mutableStateOf(calendar.get(Calendar.YEAR)) }
-    var selectedMonth by remember { mutableStateOf(calendar.get(Calendar.MONTH)) }
-    var selectedDay by remember { mutableStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
-
-    Dialog(onDismissRequest = onDismissRequest) {
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Pilih Tanggal",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-
-                // Gunakan DatePicker dari Material 3
-                val datePickerState = rememberDatePickerState(
-                    initialSelectedDateMillis = calendar.timeInMillis
-                )
-                DatePicker(
-                    state = datePickerState,
-                    modifier = Modifier.padding(16.dp)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismissRequest) {
-                        Text("Batal")
+    // Tema Kalender
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            surface = CardSurface,
+            onSurface = Color.White,
+            primary = Color(0xFF6366F1),
+            onPrimary = Color.White
+        )
+    ) {
+        DatePickerDialog(
+            onDismissRequest = onDismissRequest,
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let {
+                        onDateSelected(Date(it))
                     }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Button(
-                        onClick = {
-                            datePickerState.selectedDateMillis?.let { millis ->
-                                val selectedCalendar = Calendar.getInstance().apply {
-                                    timeInMillis = millis
-                                }
-                                onDateSelected(selectedCalendar.time)
-                            } ?: onDateSelected(calendar.time)
-                        }
-                    ) {
-                        Text("OK")
-                    }
+                }) {
+                    Text("Pilih", color = Color(0xFF6366F1), fontWeight = FontWeight.Bold)
                 }
-            }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissRequest) {
+                    Text("Batal", color = TextMuted)
+                }
+            },
+            colors = DatePickerDefaults.colors(
+                containerColor = CardSurface
+            )
+        ) {
+            DatePicker(
+                state = datePickerState,
+                colors = DatePickerDefaults.colors(
+                    containerColor = CardSurface,
+                    titleContentColor = Color.White,
+                    headlineContentColor = Color.White,
+                    weekdayContentColor = TextMuted,
+                    subheadContentColor = TextMuted,
+                    yearContentColor = Color.White,
+                    currentYearContentColor = Color(0xFF6366F1),
+                    selectedYearContentColor = Color.White,
+                    selectedYearContainerColor = Color(0xFF6366F1),
+                    dayContentColor = Color.White,
+                    selectedDayContainerColor = Color(0xFF6366F1),
+                    selectedDayContentColor = Color.White,
+                    todayContentColor = Color(0xFF6366F1),
+                    todayDateBorderColor = Color(0xFF6366F1)
+                )
+            )
         }
     }
 }
@@ -459,165 +351,201 @@ fun AddTransactionDialog(
     var name by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
 
-    // State untuk tanggal
+    val accentColor = if (transactionType == "Pemasukan") IncomeGreen else ExpenseRed
+
     val calendar = Calendar.getInstance()
     var selectedDate by remember { mutableStateOf(calendar.time) }
     var showDatePicker by remember { mutableStateOf(false) }
     val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
 
-    // Menentukan daftar kategori berdasarkan jenis transaksi
     val categories = if (transactionType == "Pemasukan") incomeCategories else expenseCategories
     var selectedCategory by remember { mutableStateOf(categories.first()) }
 
-    // Update kategori saat jenis transaksi berubah
     LaunchedEffect(transactionType) {
         val newCategories = if (transactionType == "Pemasukan") incomeCategories else expenseCategories
         selectedCategory = newCategories.first()
     }
 
-    // Dialog pemilih tanggal
     if (showDatePicker) {
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
-            onDateSelected = {
-                selectedDate = it
-                showDatePicker = false
-            },
+            onDateSelected = { selectedDate = it; showDatePicker = false },
             initialDate = selectedDate
         )
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Tambah Transaksi") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Nama Transaksi") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.95f),
+        content = {
+            Surface(
+                color = CardSurface,
+                shape = RoundedCornerShape(28.dp)
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        text = "Tambah Transaksi",
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it },
-                    label = { Text("Jumlah (Rp)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Field pemilih tanggal
-                OutlinedTextField(
-                    value = dateFormat.format(selectedDate),
-                    onValueChange = { },
-                    label = { Text("Tanggal") },
-                    readOnly = true,
-                    trailingIcon = {
-                        IconButton(onClick = { showDatePicker = true }) {
-                            Icon(
-                                imageVector = Icons.Default.DateRange,
-                                contentDescription = "Pilih Tanggal"
-                            )
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showDatePicker = true }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Dropdown kategori
-                Text("Kategori", fontWeight = FontWeight.Medium)
-
-                var expanded by remember { mutableStateOf(false) }
-
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = selectedCategory,
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    // Switcher Tipe Transaksi
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor()
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
+                            .background(BgColor, RoundedCornerShape(12.dp))
+                            .padding(4.dp)
                     ) {
-                        categories.forEach { category ->
-                            DropdownMenuItem(
-                                text = { Text(category) },
-                                onClick = {
-                                    selectedCategory = category
-                                    expanded = false
+                        listOf("Pemasukan", "Pengeluaran").forEach { type ->
+                            val isSelected = transactionType == type
+                            val chipColor = if (type == "Pemasukan") IncomeGreen else ExpenseRed
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(
+                                        if (isSelected) chipColor.copy(alpha = 0.2f) else Color.Transparent,
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { onTypeChange(type) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = type,
+                                    color = if (isSelected) chipColor else TextMuted,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nama Transaksi") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = accentColor,
+                            focusedLabelColor = accentColor,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = amount,
+                        onValueChange = { amount = it },
+                        label = { Text("Jumlah (Rp)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = accentColor,
+                            focusedLabelColor = accentColor,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        prefix = { Text("Rp ", color = TextMuted) }
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Date & Category Row
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // Date Picker Field
+                        OutlinedTextField(
+                            value = dateFormat.format(selectedDate),
+                            onValueChange = {},
+                            label = { Text("Tanggal") },
+                            readOnly = true,
+                            modifier = Modifier.weight(1f).clickable { showDatePicker = true },
+                            trailingIcon = {
+                                Icon(Icons.Default.DateRange, null, tint = TextMuted, modifier = Modifier.clickable { showDatePicker = true })
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(unfocusedTextColor = Color.White),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Category Dropdown yang lebih rapi
+                    var expanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedCategory,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Kategori") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = accentColor,
+                                focusedLabelColor = accentColor,
+                                unfocusedTextColor = Color.White,
+                                focusedTextColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.background(CardSurface)
+                        ) {
+                            categories.forEach { category ->
+                                DropdownMenuItem(
+                                    text = { Text(category, color = Color.White) },
+                                    onClick = { selectedCategory = category; expanded = false },
+                                    colors = MenuDefaults.itemColors(
+                                        textColor = Color.White
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Batal", color = TextMuted)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (name.isNotBlank() && amount.isNotBlank()) {
+                                    onAddTransaction(name, amount, selectedCategory, dateFormat.format(selectedDate))
                                 }
-                            )
+                            },
+                            modifier = Modifier.weight(1.5f),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = name.isNotBlank() && amount.isNotBlank()
+                        ) {
+                            Text("Simpan Transaksi", fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    FilterChip(
-                        selected = transactionType == "Pemasukan",
-                        onClick = { onTypeChange("Pemasukan") },
-                        label = { Text("Pemasukan") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.KeyboardArrowDown,
-                                contentDescription = "Pemasukan",
-                                tint = Color.Green
-                            )
-                        }
-                    )
-
-                    FilterChip(
-                        selected = transactionType == "Pengeluaran",
-                        onClick = { onTypeChange("Pengeluaran") },
-                        label = { Text("Pengeluaran") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.KeyboardArrowUp,
-                                contentDescription = "Pengeluaran",
-                                tint = Color.Red
-                            )
-                        }
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.isNotBlank() && amount.isNotBlank()) {
-                        onAddTransaction(name, amount, selectedCategory, dateFormat.format(selectedDate))
-                    }
-                },
-                enabled = name.isNotBlank() && amount.isNotBlank()
-            ) {
-                Text("Tambah")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Batal")
             }
         }
     )
@@ -647,10 +575,13 @@ fun EditTransactionDialog(
         )
     }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showDeleteWarning by remember { mutableStateOf(false) }
 
     // Menentukan daftar kategori berdasarkan jenis transaksi
     val categories = if (type == "Pemasukan") incomeCategories else expenseCategories
     var selectedCategory by remember { mutableStateOf(transaction.category) }
+
+    val accentColor = if (type == "Pemasukan") IncomeGreen else ExpenseRed
 
     // Update kategori saat jenis transaksi berubah
     LaunchedEffect(type) {
@@ -673,161 +604,208 @@ fun EditTransactionDialog(
         )
     }
 
+    // Warning delete
+    if (showDeleteWarning) {
+        AlertDialog(
+            onDismissRequest = { showDeleteWarning = false },
+            title = { Text("Hapus Transaksi", color = Color.White) },
+            text = { Text("Apakah Anda yakin ingin menghapus transaksi ini?", color = Color.White) },
+            containerColor = CardSurface,
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteTransaction()
+                    showDeleteWarning = false
+                }) {
+                    Text("Hapus", color = ExpenseRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteWarning = false }) {
+                    Text("Batal", color = TextMuted)
+                }
+            }
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Transaksi") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Nama Transaksi") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.95f),
+        content = {
+            Surface(
+                color = CardSurface,
+                shape = RoundedCornerShape(28.dp)
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text(
+                        text = "Edit Transaksi",
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it },
-                    label = { Text("Jumlah (Rp)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Field pemilih tanggal
-                OutlinedTextField(
-                    value = dateFormat.format(selectedDate),
-                    onValueChange = { },
-                    label = { Text("Tanggal") },
-                    readOnly = true,
-                    trailingIcon = {
-                        IconButton(onClick = { showDatePicker = true }) {
-                            Icon(
-                                imageVector = Icons.Default.DateRange,
-                                contentDescription = "Pilih Tanggal"
-                            )
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showDatePicker = true }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Dropdown kategori
-                Text("Kategori", fontWeight = FontWeight.Medium)
-
-                var expanded by remember { mutableStateOf(false) }
-
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = selectedCategory,
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    // Switcher Tipe Transaksi
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .menuAnchor()
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
+                            .background(BgColor, RoundedCornerShape(12.dp))
+                            .padding(4.dp)
                     ) {
-                        categories.forEach { category ->
-                            DropdownMenuItem(
-                                text = { Text(category) },
-                                onClick = {
-                                    selectedCategory = category
-                                    expanded = false
-                                }
-                            )
+                        listOf("Pemasukan", "Pengeluaran").forEach { typeOption ->
+                            val isSelected = type == typeOption
+                            val chipColor = if (typeOption == "Pemasukan") IncomeGreen else ExpenseRed
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(
+                                        if (isSelected) chipColor.copy(alpha = 0.2f) else Color.Transparent,
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { type = typeOption }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = typeOption,
+                                    color = if (isSelected) chipColor else TextMuted,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    FilterChip(
-                        selected = type == "Pemasukan",
-                        onClick = { type = "Pemasukan" },
-                        label = { Text("Pemasukan") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.KeyboardArrowDown,
-                                contentDescription = "Pemasukan",
-                                tint = Color.Green
-                            )
-                        }
+                    // Input Fields
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nama Transaksi") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = accentColor,
+                            focusedLabelColor = accentColor,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
                     )
 
-                    FilterChip(
-                        selected = type == "Pengeluaran",
-                        onClick = { type = "Pengeluaran" },
-                        label = { Text("Pengeluaran") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.KeyboardArrowUp,
-                                contentDescription = "Pengeluaran",
-                                tint = Color.Red
-                            )
-                        }
-                    )
-                }
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Delete Button
-                Button(
-                    onClick = onDeleteTransaction,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Red
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        modifier = Modifier.padding(end = 8.dp)
+                    OutlinedTextField(
+                        value = amount,
+                        onValueChange = { amount = it },
+                        label = { Text("Jumlah (Rp)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = accentColor,
+                            focusedLabelColor = accentColor,
+                            unfocusedTextColor = Color.White,
+                            focusedTextColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        prefix = { Text("Rp ", color = TextMuted) }
                     )
-                    Text("Hapus Transaksi")
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.isNotBlank() && amount.isNotBlank()) {
-                        onUpdateTransaction(
-                            name,
-                            type,
-                            amount,
-                            selectedCategory,
-                            dateFormat.format(selectedDate)
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Date
+                    OutlinedTextField(
+                        value = dateFormat.format(selectedDate),
+                        onValueChange = {},
+                        label = { Text("Tanggal") },
+                        readOnly = true,
+                        modifier = Modifier.fillMaxWidth().clickable { showDatePicker = true },
+                        trailingIcon = {
+                            Icon(Icons.Default.DateRange, null, tint = TextMuted, modifier = Modifier.clickable { showDatePicker = true })
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedTextColor = Color.White),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Category
+                    var expanded by remember { mutableStateOf(false) }
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = it }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedCategory,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Kategori") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier.fillMaxWidth().menuAnchor(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = accentColor,
+                                focusedLabelColor = accentColor,
+                                unfocusedTextColor = Color.White,
+                                focusedTextColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp)
                         )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.background(CardSurface)
+                        ) {
+                            categories.forEach { category ->
+                                DropdownMenuItem(
+                                    text = { Text(category, color = Color.White) },
+                                    onClick = { selectedCategory = category; expanded = false },
+                                    colors = MenuDefaults.itemColors(
+                                        textColor = Color.White
+                                    )
+                                )
+                            }
+                        }
                     }
-                },
-                enabled = name.isNotBlank() && amount.isNotBlank()
-            ) {
-                Text("Simpan")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Batal")
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Delete Button (kecil di kiri)
+                        IconButton(
+                            onClick = { showDeleteWarning = true },
+                            modifier = Modifier.background(ExpenseRed.copy(0.1f), RoundedCornerShape(12.dp))
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ExpenseRed)
+                        }
+
+                        TextButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Batal", color = TextMuted)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (name.isNotBlank() && amount.isNotBlank()) {
+                                    onUpdateTransaction(name, type, amount, selectedCategory, dateFormat.format(selectedDate))
+                                }
+                            },
+                            modifier = Modifier.weight(1.5f),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = name.isNotBlank() && amount.isNotBlank()
+                        ) {
+                            Text("Update", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
             }
         }
     )
@@ -838,39 +816,56 @@ fun TransactionItem(
     transaction: Transaction,
     onClick: () -> Unit
 ) {
-    Card(
-        shape = RoundedCornerShape(8.dp),
+    val isIncome = transaction.type == "Pemasukan"
+    val iconColor = if (isIncome) IncomeGreen else ExpenseRed
+    val bgColor = if (isIncome) IncomeGreen.copy(alpha = 0.15f) else ExpenseRed.copy(alpha = 0.15f)
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(bgColor, RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isIncome) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                    contentDescription = null,
+                    tint = iconColor
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
             Column {
-                Text(transaction.name, fontWeight = FontWeight.Bold)
+                Text(transaction.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Menampilkan kategori dengan chip
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(transaction.category, fontSize = 10.sp) },
-                        modifier = Modifier.padding(end = 8.dp),
-                        enabled = false
+                    Text(
+                        text = transaction.category,
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
                     )
-                    Text(transaction.date, fontSize = 12.sp, color = Color.Gray)
+                    Text(" • ", color = TextMuted, fontSize = 12.sp)
+                    Text(transaction.date, color = TextMuted, fontSize = 12.sp)
                 }
             }
-            Text(
-                text = if (transaction.type == "Pemasukan") "+Rp${transaction.amount}" else "-Rp${transaction.amount}",
-                color = if (transaction.type == "Pemasukan") Color.Green else Color.Red,
-                fontWeight = FontWeight.Bold
-            )
         }
+
+        Text(
+            text = if (isIncome) "+Rp${transaction.amount}" else "-Rp${transaction.amount}",
+            color = if (isIncome) IncomeGreen else Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp
+        )
     }
 }
 
@@ -878,8 +873,335 @@ fun Int.format(): String = "%,d".format(this)
 
 @Preview(showBackground = true)
 @Composable
-fun MoneyTrackerScreenPreview() {
-    Money_TrackerTheme {
-        MoneyTrackerScreen()
+fun MoneyTrackerApp() {
+    // Data simulasi 4 bulan
+    val transactions = remember {
+        mutableStateListOf(
+
+            // Januari
+            Transaction("Gaji Januari", "Pemasukan", "8.000.000", "01 Januari 2026", "Gaji"),
+            Transaction("Kebutuhan Kost", "Pengeluaran", "1.500.000", "02 Januari 2026", "Rumah"),
+            Transaction("Makan & Harian", "Pengeluaran", "1.200.000", "10 Januari 2026", "Makanan"),
+            Transaction("Transport", "Pengeluaran", "500.000", "15 Januari 2026", "Transportasi"),
+            Transaction("Nabung", "Pengeluaran", "2.000.000", "25 Januari 2026", "Investasi"),
+
+            // Februari
+            Transaction("Gaji Februari", "Pemasukan", "8.000.000", "01 Februari 2026", "Gaji"),
+            Transaction("Bonus Freelance", "Pemasukan", "1.500.000", "12 Februari 2026", "Bonus"),
+            Transaction("Kebutuhan Kost", "Pengeluaran", "1.500.000", "02 Februari 2026", "Rumah"),
+            Transaction("Makan & Harian", "Pengeluaran", "1.000.000", "18 Februari 2026", "Makanan"),
+            Transaction("Transport", "Pengeluaran", "400.000", "20 Februari 2026", "Transportasi"),
+
+            // Maret
+            Transaction("Gaji Maret", "Pemasukan", "8.000.000", "01 Maret 2026", "Gaji"),
+            Transaction("Beli HP Baru", "Pengeluaran", "6.000.000", "05 Maret 2026", "Belanja"),
+            Transaction("Service Laptop", "Pengeluaran", "1.200.000", "10 Maret 2026", "Lainnya"),
+            Transaction("Makan & Harian", "Pengeluaran", "1.200.000", "18 Maret 2026", "Makanan"),
+            Transaction("Hangout", "Pengeluaran", "800.000", "25 Maret 2026", "Hiburan"),
+
+            // April
+            Transaction("Gaji April", "Pemasukan", "8.500.000", "01 April 2026", "Gaji"),
+            Transaction("Side Hustle", "Pemasukan", "2.000.000", "07 April 2026", "Bonus"),
+            Transaction("Kebutuhan Kost", "Pengeluaran", "1.500.000", "02 April 2026", "Rumah"),
+            Transaction("Makan & Harian", "Pengeluaran", "1.200.000", "15 April 2026", "Makanan"),
+            Transaction("Tagihan", "Pengeluaran", "700.000", "20 April 2026", "Tagihan"),
+            Transaction("Nabung Kecil", "Pengeluaran", "1.000.000", "28 April 2026", "Investasi")
+        )
+    }
+    var currentScreen by remember { mutableStateOf("home") }
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar(containerColor = Color(0xFF1E1E1E)) {
+                NavigationBarItem(
+                    selected = currentScreen == "home",
+                    onClick = { currentScreen = "home" },
+                    label = { Text("Home", color = Color.White) },
+                    icon = { Icon(Icons.Default.Home, contentDescription = null, tint = Color.White) }
+                )
+                NavigationBarItem(
+                    selected = currentScreen == "stats",
+                    onClick = { currentScreen = "stats" },
+                    label = { Text("Stats", color = Color.White) },
+                    icon = { Icon(Icons.Default.DateRange, contentDescription = null, tint = Color.White) }
+                )
+            }
+        }
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            when (currentScreen) {
+                "home" -> MoneyTrackerHomeScreen(transactions)
+                "stats" -> StatisticsScreen(transactions)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StatisticsScreen(transactions: List<Transaction>) {
+    var selectedStatType by remember { mutableStateOf("Pengeluaran") }
+    var filterMonth by remember { mutableStateOf("Semua Bulan") }
+
+    val availableMonths = remember(transactions) {
+        listOf("Semua Bulan") + transactions.mapNotNull {
+            val parts = it.date.split(" ")
+            if (parts.size >= 3) "${parts[1]} ${parts[2]}" else null
+        }.distinct()
+    }
+
+    Column(modifier = Modifier.fillMaxSize().background(BgColor).padding(horizontal = 20.dp)) {
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("Analisis Keuangan", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // --- SECTION: TREND (Paling Atas) ---
+                Text("Trend Keuangan", color = TextMuted, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = CardSurface),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Text("Saldo Bersih", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("Perkembangan pemasukan vs pengeluaran", color = TextMuted, fontSize = 12.sp)
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        val monthlyTrend = transactions.groupBy {
+                            val p = it.date.split(" "); if (p.size >= 3) "${p[1]} ${p[2]}" else "Lainnya"
+                        }.mapValues { (_, txs) ->
+                            val inc = txs.filter { it.type == "Pemasukan" }.sumOf { it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
+                            val exp = txs.filter { it.type == "Pengeluaran" }.sumOf { it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
+                            (inc - exp).toFloat()
+                        }.toList().sortedBy { (m, _) ->
+                            try { SimpleDateFormat("MMMM yyyy", Locale.getDefault()).parse(m) } catch(e:Exception) { Date(0) }
+                        }
+
+                        if (monthlyTrend.size >= 2) {
+                            LineChart(monthlyTrend, modifier = Modifier.fillMaxWidth().height(200.dp))
+                        } else {
+                            Text("Butuh minimal 2 bulan transaksi untuk melihat trend.", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 20.dp))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Text("Analisis Per Kategori", color = TextMuted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = CardSurface),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        // Switcher Tipe (Pemasukan / Pengeluaran)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(BgColor, RoundedCornerShape(12.dp))
+                                .padding(4.dp)
+                        ) {
+                            listOf("Pengeluaran", "Pemasukan").forEach { type ->
+                                val isSelected = selectedStatType == type
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(
+                                            if (isSelected) CardSurface else Color.Transparent,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable { selectedStatType = type }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = type,
+                                        color = if (isSelected) Color.White else TextMuted,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Distribusi $selectedStatType",
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            // Filter Bulan
+                            var expandedMonth by remember { mutableStateOf(false) }
+                            Box {
+                                Surface(
+                                    onClick = { expandedMonth = true },
+                                    color = BgColor,
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(filterMonth, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                                DropdownMenu(expanded = expandedMonth, onDismissRequest = { expandedMonth = false }) {
+                                    availableMonths.forEach { month ->
+                                        DropdownMenuItem(text = { Text(month) }, onClick = { filterMonth = month; expandedMonth = false })
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Donut Chart
+                        val filteredData = transactions.filter { it.type == selectedStatType && (filterMonth == "Semua Bulan" || it.date.contains(filterMonth)) }
+                        val categoryData = filteredData.groupBy { it.category }
+                            .mapValues { it.value.sumOf { tx -> tx.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }.toFloat() }
+
+                        if (categoryData.isNotEmpty()) {
+                            DonutChartWithLegend(categoryData, selectedStatType)
+                        } else {
+                            EmptyStateMessage("Tidak ada data $selectedStatType di bulan $filterMonth")
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(100.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun EmptyStateMessage(message: String) {
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = message, color = TextMuted, fontSize = 14.sp, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+fun DonutChartWithLegend(data: Map<String, Float>, type: String) {
+    val total = data.values.sum()
+    val colors = listOf(Color(0xFF6366F1), Color(0xFF8B5CF6), Color(0xFFEC4899), Color(0xFFF59E0B), Color(0xFF10B981), Color(0xFF06B6D4))
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(200.dp)) {
+            Canvas(modifier = Modifier.size(150.dp)) {
+                var startAngle = -90f
+                data.values.forEachIndexed { i, v ->
+                    val sweep = (v / total) * 360f
+                    drawArc(colors[i % colors.size], startAngle, sweep, false, style = androidx.compose.ui.graphics.drawscope.Stroke(40f))
+                    startAngle += sweep
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Total", color = TextMuted, fontSize = 12.sp)
+                Text("Rp${total.toInt().format()}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+        // Legend Grid
+        data.keys.forEachIndexed { i, cat ->
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(10.dp).background(colors[i % colors.size], RoundedCornerShape(2.dp)))
+                Text(cat, color = TextMuted, fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp).weight(1f))
+                Text("Rp${data[cat]?.toInt()?.format()}", color = Color.White, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+fun LineChart(data: List<Pair<String, Float>>, modifier: Modifier = Modifier) {
+    val netValues = data.map { it.second }
+    val maxVal = netValues.maxOrNull() ?: 0f
+    val minVal = netValues.minOrNull() ?: 0f
+    val range = (maxVal - minVal).coerceAtLeast(1f)
+
+    Column(modifier = modifier) {
+        Row(modifier = Modifier.weight(1f)) {
+            // Y-axis Labels
+            Column(
+                modifier = Modifier.fillMaxHeight().padding(end = 12.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(text = "Rp${maxVal.toInt().format()}", color = TextMuted, fontSize = 9.sp)
+                Text(text = "Rp${((maxVal + minVal) / 2).toInt().format()}", color = TextMuted, fontSize = 9.sp)
+                Text(text = "Rp${minVal.toInt().format()}", color = TextMuted, fontSize = 9.sp)
+            }
+
+            Canvas(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                val width = size.width
+                val height = size.height
+                val spacing = width / (data.size - 1).coerceAtLeast(1)
+
+                // Grid lines
+                drawLine(Color.DarkGray.copy(0.2f), Offset(0f, 0f), Offset(width, 0f), strokeWidth = 1f)
+                drawLine(Color.DarkGray.copy(0.2f), Offset(0f, height / 2), Offset(width, height / 2), strokeWidth = 1f)
+                drawLine(Color.DarkGray.copy(0.2f), Offset(0f, height), Offset(width, height), strokeWidth = 1f)
+
+                val zeroY = height - ((0f - minVal) / range * height)
+                if (zeroY in 0f..height) {
+                    drawLine(Color.White.copy(0.15f), Offset(0f, zeroY), Offset(width, zeroY), strokeWidth = 2f)
+                }
+
+                val points = data.indices.map { i ->
+                    Offset(i * spacing, height - ((netValues[i] - minVal) / range * height))
+                }
+
+                // Draw segments with green for increase and red for decrease
+                for (i in 0 until points.size - 1) {
+                    val color = if (netValues[i + 1] >= netValues[i]) IncomeGreen else ExpenseRed
+                    drawLine(
+                        color = color,
+                        start = points[i],
+                        end = points[i + 1],
+                        strokeWidth = 8f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                }
+
+                points.forEachIndexed { i, pt ->
+                    val color = if (i > 0) {
+                        if (netValues[i] >= netValues[i - 1]) IncomeGreen else ExpenseRed
+                    } else if (points.size > 1) {
+                        if (netValues[1] >= netValues[0]) IncomeGreen else ExpenseRed
+                    } else Color.White
+                    drawCircle(Color.White, radius = 10f, center = pt)
+                    drawCircle(color, radius = 6f, center = pt)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Month Labels at the bottom
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 60.dp), // Approximate offset to align with Canvas
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            data.forEach { (month, _) ->
+                val monthShort = month.split(" ").first().take(3)
+                Text(monthShort, color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
