@@ -36,6 +36,9 @@ import com.example.money_tracker.ui.theme.Money_TrackerTheme
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.max
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Search
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -97,21 +100,47 @@ fun MoneyTrackerHomeScreen(transactions: MutableList<Transaction>) {
     var selectedTransactionIndex by remember { mutableStateOf(-1) }
     var editingTransaction by remember { mutableStateOf<Transaction?>(null) }
 
-    val displayedTransactions = remember(transactions, filterType, filterMonth) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val displayedTransactions = remember(transactions, filterType, filterMonth, searchQuery) {
         transactions.filter { transaction ->
-            val matchType = if (filterType == "All") true else transaction.type == filterType
+
+            val matchType =
+                if (filterType == "All") true
+                else transaction.type == filterType
+
             val parts = transaction.date.split(" ")
-            val monthYear = if (parts.size >= 3) "${parts[1]} ${parts[2]}" else ""
-            val matchMonth = if (filterMonth == "Semua Bulan") true else monthYear == filterMonth
-            matchType && matchMonth
+            val monthYear =
+                if (parts.size >= 3) "${parts[1]} ${parts[2]}"
+                else ""
+
+            val matchMonth =
+                if (filterMonth == "Semua Bulan") true
+                else monthYear == filterMonth
+
+            // SEARCH
+            val query = searchQuery.trim().lowercase()
+
+            val matchSearch =
+                query.isEmpty() ||
+                        transaction.name.lowercase().contains(query) ||
+                        transaction.category.lowercase().contains(query) ||
+                        transaction.date.lowercase().contains(query)
+
+            matchType && matchMonth && matchSearch
+
         }.sortedByDescending {
-            try { dateFormat.parse(it.date) } catch (e: Exception) { Date(0) }
+            try {
+                dateFormat.parse(it.date)
+            } catch (e: Exception) {
+                Date(0)
+            }
         }
     }
 
-    val totalIncome = displayedTransactions.filter { it.type == "Pemasukan" }
+    val totalIncome = transactions.filter { it.type == "Pemasukan" }
         .sumOf { it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
-    val totalExpense = displayedTransactions.filter { it.type == "Pengeluaran" }
+    val totalExpense = transactions.filter { it.type == "Pengeluaran" }
         .sumOf { it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
     val balance = totalIncome - totalExpense
 
@@ -217,14 +246,39 @@ fun MoneyTrackerHomeScreen(transactions: MutableList<Transaction>) {
             }
 
             // Wallet Card
+            var isBalanceVisible by remember { mutableStateOf(true) }
+
             Card(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
                 colors = CardDefaults.cardColors(containerColor = CardSurface),
                 shape = RoundedCornerShape(28.dp)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    Text("Total Saldo", color = TextMuted, fontSize = 14.sp)
-                    Text("Rp${balance.format()}", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    //Text("Total Saldo", color = TextMuted, fontSize = 14.sp)
+                    //Text("Rp${balance.format()}", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Total Saldo", color = TextMuted, fontSize = 14.sp)
+
+                        Icon(
+                            imageVector = if (isBalanceVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable { isBalanceVisible = !isBalanceVisible }
+                        )
+                    }
+
+                    Text(
+                        text = if (isBalanceVisible) "Rp${balance.format()}" else "Rp ******",
+                        color = Color.White,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(modifier = Modifier.height(24.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
                         InfoColumn("Pemasukan", "Rp${totalIncome.format()}", IncomeGreen, Icons.Default.KeyboardArrowDown, Modifier.weight(1f))
@@ -247,6 +301,25 @@ fun MoneyTrackerHomeScreen(transactions: MutableList<Transaction>) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Cari nama, tanggal, atau kategori...") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF6366F1),
+                    unfocusedBorderColor = TextMuted,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = TextMuted)
+                }
+            )
             // Transaction List
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(displayedTransactions.size) { index ->
