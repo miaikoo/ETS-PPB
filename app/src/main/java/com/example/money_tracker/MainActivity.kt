@@ -89,6 +89,7 @@ fun SplashScreen(onTimeout: () -> Unit) {
 @Composable
 fun MoneyTrackerApp() {
     var showSplash by remember { mutableStateOf(true) }
+    var showAddDialog by remember { mutableStateOf(false) }
     
     val transactions = remember {
         mutableStateListOf(
@@ -109,6 +110,18 @@ fun MoneyTrackerApp() {
     } else {
         var currentScreen by remember { mutableStateOf("home") }
         Scaffold(
+            floatingActionButton = {
+                if (currentScreen == "home") {
+                    ExtendedFloatingActionButton(
+                        onClick = { showAddDialog = true },
+                        containerColor = Color(0xFF6366F1),
+                        contentColor = Color.White,
+                        icon = { Icon(Icons.Default.Add, null) },
+                        text = { Text("Transaksi", fontWeight = FontWeight.Bold) }
+                    )
+                }
+            },
+            floatingActionButtonPosition = FabPosition.Center,
             bottomBar = {
                 NavigationBar(containerColor = Color(0xFF1E1E1E)) {
                     NavigationBarItem(
@@ -128,7 +141,12 @@ fun MoneyTrackerApp() {
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
                 when (currentScreen) {
-                    "home" -> MoneyTrackerHomeScreen(transactions)
+                    "home" -> MoneyTrackerHomeScreen(
+                        transactions = transactions,
+                        showAddDialog = showAddDialog,
+                        onDismissDialog = { showAddDialog = false },
+                        onOpenDialog = { showAddDialog = true }
+                    )
                     "stats" -> StatisticsScreen(transactions)
                 }
             }
@@ -138,15 +156,19 @@ fun MoneyTrackerApp() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MoneyTrackerHomeScreen(transactions: MutableList<Transaction>) {
-    var showAddDialog by remember { mutableStateOf(false) }
+fun MoneyTrackerHomeScreen(
+    transactions: MutableList<Transaction>,
+    showAddDialog: Boolean,
+    onDismissDialog: () -> Unit,
+    onOpenDialog: () -> Unit
+) {
     var showEditDialog by remember { mutableStateOf(false) }
     var selectedTransactionType by remember { mutableStateOf("Pengeluaran") }
     var filterType by remember { mutableStateOf("All") }
     var filterMonth by remember { mutableStateOf("Semua Bulan") }
     var searchQuery by remember { mutableStateOf("") }
-    
-    val dateFormat = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+
+    val dateFormat = remember { SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")) }
     val availableMonths = remember(transactions) {
         listOf("Semua Bulan") + transactions.mapNotNull {
             val parts = it.date.split(" ")
@@ -183,9 +205,9 @@ fun MoneyTrackerHomeScreen(transactions: MutableList<Transaction>) {
             onAddTransaction = { name, amount, category, date ->
                 val cleanAmount = amount.replace(Regex("[^0-9]"), "")
                 transactions.add(Transaction(name, selectedTransactionType, cleanAmount.toIntOrNull()?.format() ?: "0", date, category))
-                showAddDialog = false
+                onDismissDialog()
             },
-            onDismiss = { showAddDialog = false }
+            onDismiss = onDismissDialog
         )
     }
 
@@ -216,17 +238,7 @@ fun MoneyTrackerHomeScreen(transactions: MutableList<Transaction>) {
                     Text("Kelola uangmu hari ini", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
                 var expandedMonth by remember { mutableStateOf(false) }
-                Box {
-                    Surface(onClick = { expandedMonth = true }, color = CardSurface, shape = RoundedCornerShape(12.dp)) {
-                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(filterMonth, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                    DropdownMenu(expanded = expandedMonth, onDismissRequest = { expandedMonth = false }) {
-                        availableMonths.forEach { month -> DropdownMenuItem(text = { Text(month) }, onClick = { filterMonth = month; expandedMonth = false }) }
-                    }
-                }
+                Spacer(modifier = Modifier.width(16.dp))
             }
 
             // Wallet Card
@@ -282,11 +294,6 @@ fun MoneyTrackerHomeScreen(transactions: MutableList<Transaction>) {
                 selectedTransactionIndex = globalIndex
                 editingTransaction = transactions[globalIndex]
                 showEditDialog = true
-            }
-        }
-        item {
-            Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                ExtendedFloatingActionButton(onClick = { showAddDialog = true }, containerColor = Color(0xFF6366F1), contentColor = Color.White, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Transaksi", fontWeight = FontWeight.Bold) })
             }
         }
     }
