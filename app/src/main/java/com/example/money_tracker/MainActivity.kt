@@ -90,18 +90,39 @@ fun SplashScreen(onTimeout: () -> Unit) {
 fun MoneyTrackerApp() {
     var showSplash by remember { mutableStateOf(true) }
     var showAddDialog by remember { mutableStateOf(false) }
-    
+
+//    "Makanan", "Transportasi", "Belanja", "Hiburan", "Pendidikan", "Kesehatan", "Tagihan", "Rumah", "Lainnya"
     val transactions = remember {
         mutableStateListOf(
-            Transaction("Gaji Januari", "Pemasukan", "8.000.000", "01 Januari 2026", "Gaji"),
-            Transaction("Kebutuhan Kost", "Pengeluaran", "1.500.000", "02 Januari 2026", "Rumah"),
-            Transaction("Makan & Harian", "Pengeluaran", "1.200.000", "10 Januari 2026", "Makanan"),
-            Transaction("Transport", "Pengeluaran", "500.000", "15 Januari 2026", "Transportasi"),
-            Transaction("Gaji Februari", "Pemasukan", "8.000.000", "01 Februari 2026", "Gaji"),
-            Transaction("Bonus Project", "Pemasukan", "1.500.000", "12 Februari 2026", "Bonus"),
-            Transaction("Gaji Maret", "Pemasukan", "8.000.000", "01 Maret 2026", "Gaji"),
-            Transaction("Beli HP Baru", "Pengeluaran", "6.000.000", "05 Maret 2026", "Belanja"),
-            Transaction("Service Laptop", "Pengeluaran", "1.200.000", "10 Maret 2026", "Lainnya")
+            Transaction("Gaji Januari", "Pemasukan", "8.000.000", "01 January 2026", "Gaji"),
+            Transaction("Kebutuhan Kost", "Pengeluaran", "1.500.000", "02 January 2026", "Rumah"),
+            Transaction("Bensin", "Pengeluaran", "50.000", "10 January 2026", "Transportasi"),
+            Transaction("Bensin", "Pengeluaran", "50.000", "20 January 2026", "Transportasi"),
+            Transaction("Kuota Internet", "Pengeluaran", "100.000", "15 January 2026", "Tagihan"),
+            Transaction("Langganan Spotify", "Pengeluaran", "80.000", "05 January 2026", "Tagihan"),
+            Transaction("Makan Bulanan", "Pengeluaran", "600.000", "30 January 2026", "Makanan"),
+            Transaction("Trip Bromo", "Pengeluaran", "1.500.000", "16 January 2026", "Hiburan"),
+
+            Transaction("Gaji Februari", "Pemasukan", "8.000.000", "01 February 2026", "Gaji"),
+            Transaction("Kebutuhan Kost", "Pengeluaran", "1.500.000", "02 February 2026", "Rumah"),
+            Transaction("Bensin", "Pengeluaran", "50.000", "10 February 2026", "Transportasi"),
+            Transaction("Bensin", "Pengeluaran", "50.000", "20 February 2026", "Transportasi"),
+            Transaction("Kuota Internet", "Pengeluaran", "100.000", "15 February 2026", "Tagihan"),
+            Transaction("Langganan Spotify", "Pengeluaran", "80.000", "05 February 2026", "Hiburan"),
+            Transaction("Belanja Online", "Pengeluaran", "500.000", "08 February 2026", "Belanja"),
+            Transaction("Makan Bulanan", "Pengeluaran", "800.000", "30 January 2026", "Makanan"),
+            Transaction("Bonus Project", "Pemasukan", "1.500.000", "28 February 2026", "Bonus"),
+
+            Transaction("Gaji Maret", "Pemasukan", "8.000.000", "01 March 2026", "Gaji"),
+            Transaction("Beli HP Baru", "Pengeluaran", "6.000.000", "05 March 2026", "Belanja"),
+            Transaction("Service Laptop", "Pengeluaran", "1.000.000", "10 March 2026", "Lainnya"),
+            Transaction("Kebutuhan Kost", "Pengeluaran", "1.500.000", "02 March 2026", "Rumah"),
+            Transaction("Bensin", "Pengeluaran", "50.000", "10 March 2026", "Transportasi"),
+            Transaction("Bensin", "Pengeluaran", "50.000", "20 March 2026", "Transportasi"),
+            Transaction("Kuota Internet", "Pengeluaran", "100.000", "15 March 2026", "Tagihan"),
+            Transaction("Langganan Spotify", "Pengeluaran", "80.000", "05 March 2026", "Tagihan"),
+            Transaction("Makan Bulanan", "Pengeluaran", "600.000", "30 March 2026", "Makanan"),
+            Transaction("Checkup Kesehatan", "Pengeluaran", "600.000", "21 March 2026", "Kesehatan"),
         )
     }
 
@@ -121,7 +142,6 @@ fun MoneyTrackerApp() {
                     )
                 }
             },
-            floatingActionButtonPosition = FabPosition.Center,
             bottomBar = {
                 NavigationBar(containerColor = Color(0xFF1E1E1E)) {
                     NavigationBarItem(
@@ -168,7 +188,7 @@ fun MoneyTrackerHomeScreen(
     var filterMonth by remember { mutableStateOf("Semua Bulan") }
     var searchQuery by remember { mutableStateOf("") }
 
-    val dateFormat = remember { SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")) }
+    val dateFormat = remember { SimpleDateFormat("dd MMMM yyyy", Locale.ENGLISH) }
     val availableMonths = remember(transactions) {
         listOf("Semua Bulan") + transactions.mapNotNull {
             val parts = it.date.split(" ")
@@ -238,7 +258,41 @@ fun MoneyTrackerHomeScreen(
                     Text("Kelola uangmu hari ini", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
                 var expandedMonth by remember { mutableStateOf(false) }
-                Spacer(modifier = Modifier.width(16.dp))
+                Box {
+                    Surface(
+                        onClick = { expandedMonth = true },
+                        color = CardSurface,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(filterMonth, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Icon(
+                                Icons.Default.KeyboardArrowDown,
+                                null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = expandedMonth,
+                        onDismissRequest = { expandedMonth = false }
+                    ) {
+                        availableMonths.forEach { month ->
+                            DropdownMenuItem(
+                                text = { Text(month) },
+                                onClick = {
+                                    filterMonth = month
+                                    expandedMonth = false
+                                }
+                            )
+                        }
+                    }
+                }
+//                Spacer(modifier = Modifier.width(30.dp))
             }
 
             // Wallet Card
@@ -408,11 +462,66 @@ fun StatisticsScreen(transactions: List<Transaction>) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = CardSurface), shape = RoundedCornerShape(24.dp)) {
                     Column(modifier = Modifier.padding(20.dp)) {
-                        Text("Saldo Bersih", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("Perkembangan pemasukan vs pengeluaran", color = TextMuted, fontSize = 12.sp)
+                        Text(
+                            "Saldo Bersih",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text("Perkembangan akumulasi saldo", color = TextMuted, fontSize = 12.sp)
                         Spacer(modifier = Modifier.height(24.dp))
-                        val monthlyTrend = transactions.groupBy { val p = it.date.split(" "); if (p.size >= 3) "${p[1]} ${p[2]}" else "Lainnya" }.mapValues { (_, txs) -> val inc = txs.filter { it.type == "Pemasukan" }.sumOf { it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }; val exp = txs.filter { it.type == "Pengeluaran" }.sumOf { it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }; (inc - exp).toFloat() }.toList().sortedBy { (m, _) -> try { SimpleDateFormat("MMMM yyyy", Locale.getDefault()).parse(m) } catch(e:Exception) { Date(0) } }
-                        if (monthlyTrend.size >= 2) { LineChart(monthlyTrend, modifier = Modifier.fillMaxWidth().height(200.dp)) } else { Text("Butuh minimal 2 bulan transaksi untuk melihat trend.", color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 20.dp)) }
+
+                        // --- GANTI DARI SINI ---
+                        val trendDateFormat =
+                            remember { SimpleDateFormat("MMMM yyyy", Locale.ENGLISH) }
+
+                        // 1. Kelompokkan dan hitung selisih per bulan (Pemasukan - Pengeluaran)
+                        val monthlyNet = transactions
+                            .groupBy {
+                                val p = it.date.split(" ")
+                                if (p.size >= 3) "${p[1]} ${p[2]}" else "Other"
+                            }
+                            .mapValues { (_, txs) ->
+                                val inc = txs.filter { it.type == "Pemasukan" }
+                                    .sumOf {
+                                        it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                                    }
+                                val exp = txs.filter { it.type == "Pengeluaran" }
+                                    .sumOf {
+                                        it.amount.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                                    }
+                                inc - exp
+                            }
+                            .toList()
+                            .sortedBy { (m, _) ->
+                                try {
+                                    trendDateFormat.parse(m)
+                                } catch (e: Exception) {
+                                    Date(0)
+                                }
+                            }
+
+                        // 2. Hitung Akumulasi (Saldo bulan lalu + bulan ini)
+                        var currentBalance = 0f
+                        val monthlyTrend = monthlyNet.map { (month, net) ->
+                            currentBalance += net
+                            month to currentBalance
+                        }
+
+                        // 3. Tampilkan Chart
+                        if (monthlyTrend.size >= 2) {
+                            LineChart(
+                                monthlyTrend,
+                                modifier = Modifier.fillMaxWidth().height(200.dp)
+                            )
+                        } else {
+                            Text(
+                                "Butuh minimal 2 bulan transaksi untuk melihat trend.",
+                                color = TextMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(vertical = 20.dp)
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(32.dp))
